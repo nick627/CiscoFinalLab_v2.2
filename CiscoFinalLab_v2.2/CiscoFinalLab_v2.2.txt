@@ -1,0 +1,527 @@
+﻿https://docs.google.com/spreadsheets/d/19jWj6lfjKoUKcpHvzmfCFuyEKymg-gaOuqhhIPqxzK8/edit#gid=0
+
+CiscoFinalLab_v2.2_with_command.pkt будет работать если прописать статические маршруты (ip route 0.0.0.0 0.0.0.0 int)
+На оборудовании будет работать
+
+
+Вставка в PuTTY: выделить текст, Ctrl+C, вставить в PuTTY - MOUSE3 (колесико)
+Копирование из PuTTY: выделить текст, MOUSE2 (правая кнопка), вставить не в PuTTY - MOUSE3 (колесико)
+
+sh run
+sh ip dhcp binding
+sh standby brief
+
+show etherchannel summary
+
+
+====================================
+R1:
+
+en
+conf t
+hostname R1
+
+
+// IP, VLAN and OSPF
+
+int g0/0
+ip address 10.1.0.9 255.255.255.252
+no shut
+
+int s0/0/1
+ip address 10.1.0.6 255.255.255.252
+no shutdown
+exit
+
+router ospf 1
+network 10.1.0.8 0.0.0.3 area 1
+network 10.1.0.4 0.0.0.3 area 1
+
+passive-interface g0/0
+
+
+====================================
+R2:
+
+en
+conf t
+hostname R2
+
+
+// IP, PPP, GRE
+
+int s0/0/1
+encapsulation ppp
+ppp authentication chap
+username ISP password cisco
+
+int Tunnel1
+tunnel mode gre ip
+ip address 172.16.0.1 255.255.255.252
+tunnel source s0/0/1
+tunnel destination 209.166.70.2
+
+router ospf 1
+network 172.16.0.0 0.0.0.3 area 1
+passive-interface s0/0/1
+
+
+// IP, VLAN and OSPF
+
+int s0/0/0
+ip address 10.1.0.5 255.255.255.252
+no shut
+
+int g0/0
+ip address 10.1.0.1 255.255.255.252
+no shut
+
+int s0/0/1
+ip address 209.166.60.2 255.255.255.252
+no shut
+
+exit
+
+ip route 192.168.10.0 255.255.255.0 g0/0
+ip route 192.168.20.0 255.255.255.0 g0/0
+
+router ospf 1
+network 10.1.0.4 0.0.0.3 area 1
+network 10.1.0.0 0.0.0.3 area 1
+passive-interface g0/0
+redistribute static
+
+ip route 0.0.0.0 0.0.0.0 s0/0/1
+default-information originate
+
+
+// DHCP
+
+ip dhcp pool POOL_FOR_A
+network 192.168.10.0 255.255.255.0
+default-router 192.168.10.1
+exit
+
+ip dhcp excluded-address 192.168.10.1 192.168.10.100
+ip dhcp pool POOL_FOR_B
+
+network 192.168.20.0 255.255.255.0
+default-router 192.168.20.1
+exit
+
+ip dhcp excluded-address 192.168.20.1 192.168.20.100
+
+
+// NAT, PAT
+
+int s0/0/0
+ip nat inside
+
+int s0/0/1
+ip nat outside
+
+ip nat inside source static 10.1.0.10 209.140.50.8
+
+int g0/0
+ip nat inside
+
+access-list 1 permit 192.168.0.0 0.0.255.255
+access-list 1 permit 10.1.0.10 0.0.0.0
+
+ip nat inside source list 1 interface s0/0/1 overload
+
+
+====================================
+ISP:
+
+en
+conf t
+hostname ISP
+
+
+// IP, PPP, GRE
+
+int g0/0
+ip address 209.166.50.1 255.255.255.0
+no shut
+
+int s0/0/0
+ip address 209.166.60.1 255.255.255.0
+no shut
+
+int s0/0/1
+ip addres 209.166.70.1 255.255.255.0
+no shut
+
+ip route 209.140.50.8 255.255.255.255 s0/0/0 
+
+int s0/0/0
+encapsulation ppp
+ppp authentication chap
+
+int s0/0/1
+encapsulation ppp
+ppp authentication chap
+
+username R2 password cisco
+username R4 password cisco
+
+
+====================================
+R4:
+
+en
+conf t
+hostname R4
+
+
+// IP, PPP, GRE
+
+int s0/0/0
+encapsulation ppp
+ppp authentication chap
+username ISP password cisco
+
+int Tunnel1
+tunnel mode gre ip
+ip address 172.16.0.2 255.255.255.252
+tunnel source s0/0/0
+tunnel destination 209.166.60.2
+
+router ospf 1
+network 172.16.0.0 0.0.0.3 area 1
+passive-interface s0/0/0
+
+
+// IP, OSPF
+
+int g0/0
+ip address 10.0.0.1 255.255.255.248
+no shut
+
+int s0/0/0
+ip address 209.166.70.2 255.255.255.252
+no shut
+
+router ospf 1
+network 10.0.0.0 0.0.0.7 area 0
+
+ip route 0.0.0.0 0.0.0.0 s0/0/0
+
+default-information originate
+
+
+// PAT
+
+int g0/0
+ip nat inside
+int s0/0/0
+ip nat outside
+
+access-list 1 permit 192.168.0.0 0.0.255.255
+ip nat inside source list 1 interface s0/0/0 overload
+
+
+// DHCP
+
+ip dhcp pool POOL_FOR_C
+network 192.168.30.0 255.255.255.0
+default-router 192.168.30.1
+exit
+
+ip dhcp excluded-address 192.168.30.1 192.168.30.100
+
+ip dhcp pool POOL_FOR_D
+network 192.168.40.0 255.255.255.0
+default-router 192.168.40.1
+exit
+
+ip dhcp excluded-address 192.168.40.1 192.168.40.100
+
+
+====================================
+R5:
+
+en
+conf t
+hostname R5
+
+
+// IP, VLAN and OSPF
+
+int g0/0
+ip address 10.0.0.2 255.255.255.248
+no shut
+
+int g0/1
+ip address 192.168.1.2 255.255.255.0
+
+standby version 2
+standby 1 ip 192.168.1.254
+standby 1 priority 150
+standby 1 preempt
+
+no shut
+
+int g0/1.30
+encapsulation dot1Q 30
+ip address 192.168.30.2 255.255.255.0
+ip helper-address 10.0.0.1
+
+standby version 2
+standby 3 ip 192.168.30.1
+standby 3 priority 105
+standby 3 preempt
+
+no shut
+
+int g0/1.40
+encapsulation dot1Q 40
+ip address 192.168.40.2 255.255.255.0
+ip helper-address 10.0.0.1
+
+standby version 2
+standby 4 ip 192.168.40.1
+standby 4 priority 105
+standby 4 preempt
+
+no shut
+
+end
+// maybe
+conf t
+//ip route 0.0.0.0 0.0.0.0 g0/0
+// maybe
+
+// IP, OSPF
+
+router ospf 1
+network 192.168.1.0 0.0.0.255 area 0
+network 192.168.30.0 0.0.0.255 area 0
+network 192.168.40.0 0.0.0.255 area 0
+network 10.0.0.0 0.0.0.7 area 0
+passive-interface g0/1
+
+
+====================================
+R6:
+
+en
+conf t
+hostname R6
+
+
+// IP, VLAN and OSPF
+
+int g0/0
+ip address 10.0.0.3 255.255.255.248
+no shut
+
+int g0/1
+ip address 192.168.1.3 255.255.255.0
+
+standby version 2
+standby 1 ip 192.168.1.254
+
+no shut
+
+int g0/1.30
+encapsulation dot1Q 30
+ip address 192.168.30.3 255.255.255.0
+ip helper-address 10.0.0.1
+
+standby version 2
+standby 3 ip 192.168.30.1
+standby 3 priority 100
+
+no shut
+exit
+
+int g0/1.40
+encapsulation dot1Q 40
+ip address 192.168.40.3 255.255.255.0
+ip helper-address 10.0.0.1
+
+standby version 2
+standby 4 ip 192.168.40.1
+standby 4 priority 100
+
+no shut
+
+end
+// maybe
+conf t
+//ip route 0.0.0.0 0.0.0.0 g0/0
+// maybe
+
+// IP, OSPF
+
+router ospf 1
+network 192.168.1.0 0.0.0.255 area 0
+network 192.168.30.0 0.0.0.255 area 0
+network 192.168.40.0 0.0.0.255 area 0
+network 10.0.0.0 0.0.0.7 area 0
+
+passive-interface g0/1
+
+
+====================================
+S1:
+
+en
+conf t
+hostname S1
+
+sdm prefer lanbase-routing
+no ip domain-lookup
+end
+copy run start
+
+reload
+
+
+en
+conf t
+// IP, VLAN and OSPF
+
+ip routing
+
+int vlan 1
+no shut
+
+vlan 10
+vlan 20
+
+int f0/5
+switchport mode access
+switchport access vlan 10
+
+int f0/6
+switchport mode access
+switchport access vlan 20
+
+int vlan 10
+ip address 192.168.10.1 255.255.255.0
+
+int vlan 20
+ip address 192.168.20.1 255.255.255.0
+
+int vlan 1 
+ip address 10.1.0.2 255.255.255.252
+
+ip route 0.0.0.0 0.0.0.0 10.1.0.1
+
+
+// DHCP
+
+int vlan 10
+ip helper-address 10.1.0.1
+
+int vlan 20
+ip helper-address 10.1.0.1
+
+
+====================================
+S5:
+
+en
+conf t
+hostname S5
+
+
+// IP, VLAN, EtherChannel, HSRP
+// S5,S6
+
+int range f0/10-11
+switchport mode trunk
+switchport trunk native vlan 1
+channel-group 2 mode active
+no shut
+
+int port-channel 2
+switchport mode trunk
+no shut
+
+int f0/1
+switchport mode trunk
+no shut
+
+int range f0/5
+switchport access vlan 30
+switchport mode access
+no shut
+
+int range f0/6
+switchport access vlan 40
+switchport mode access
+no shut
+
+int vlan 30
+ip address 192.168.30.11 255.255.255.0
+ip helper-address 10.0.0.1
+
+int vlan 40
+ip address 192.168.40.11 255.255.255.0
+ip helper-address 10.0.0.1
+end
+
+
+====================================
+S6:
+
+en
+conf t
+hostname S6
+
+
+// IP, VLAN, EtherChannel, HSRP
+
+int range f0/10-11
+switchport mode trunk
+switchport trunk native vlan 1
+channel-group 2 mode active
+no shut
+
+int port-channel 2
+switchport mode trunk
+no shut
+
+int f0/1
+switchport mode trunk
+no shut
+
+int range f0/5
+switchport access vlan 30
+switchport mode access
+no shut
+
+int range f0/6
+switchport access vlan 40
+switchport mode access
+no shut
+
+int vlan 30
+ip address 192.168.30.12 255.255.255.0
+ip helper-address 10.0.0.1
+
+int vlan 40
+ip address 192.168.40.12 255.255.255.0
+ip helper-address 10.0.0.1
+end
+
+
+====================================
+Server 0
+
+sudo ifconfig enp2s0 10.1.0.10/30
+sudo route add default gw 10.1.0.9
+
+
+====================================
+PC-6
+
+sudo ifconfig enp2s0 209.166.50.2/30
+sudo route add default gw 209.166.50.1
+
+
+====================================
